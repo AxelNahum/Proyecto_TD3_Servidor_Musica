@@ -34,6 +34,7 @@
 #include "server_commands.h"
 #include "session_table.h"
 #include "mp3_info.h"
+#include "server_log.h"
 
 #define MAX_SONGS   256     /* Canciones que se listan como maximo */
 #define NAME_SIZE   256
@@ -158,7 +159,7 @@ static int sync_room(int fd)
         if (!has_song)
             return 0;
         close_song();
-        printf("[%s] Sala %s: sin cancion\n", client_str, info.name);
+        server_log("[%s] Sala %s: sin cancion", client_str, info.name);
         return send_line(fd, "STOPPED");
     }
 
@@ -169,9 +170,10 @@ static int sync_room(int fd)
         room_seek_id = info.seek_id;
         if (info.position > 0)
             seek_song(info.position);           /* Entra con la cancion empezada */
-        printf("[%s] Sala %s: %s desde %d:%02d\n", client_str, info.name, info.song,
+        server_log("[%s] Sala %s: %s desde %d:%02d", client_str, info.name, info.song,
                (int)info.position / 60, (int)info.position % 60);
-        if (send_line(fd, "START %lld %s", song_size, song_name) == -1)
+        if (send_line(fd, "START %lld %d %d %s", song_size, (int)song_duration(),
+                      (int)info.position, song_name) == -1)
             return -1;
         if (info.paused) {
             paused = 1;
@@ -244,7 +246,7 @@ static int cmd_list(int fd)
         if (send_line(fd, "%s", names[i]) == -1)
             return -1;
 
-    printf("[%s] LIST -> %d canciones\n", client_str, n);
+    server_log("[%s] LIST -> %d canciones", client_str, n);
     return 0;
 }
 
@@ -258,24 +260,24 @@ static int cmd_get(int fd, const char *name)
             return send_line(fd, "ERR no existe la cancion %s", name);
         has_song = 0;       /* Para que sync_room() la "vea" como nueva y mande START */
         room_play(room, name, song_duration(), 0);
-        printf("[%s] GET %s (sala)\n", client_str, name);
+        server_log("[%s] GET %s (sala)", client_str, name);
         return sync_room(fd);
     }
 
     if (open_song(name) == -1) {
-        printf("[%s] GET %s -> no existe\n", client_str, name);
+        server_log("[%s] GET %s -> no existe", client_str, name);
         return send_line(fd, "ERR no existe la cancion %s", name);
     }
     table_play(table_row, song_name, song_duration(), 0);
-    printf("[%s] GET %s -> %lld bytes, %d kbps\n", client_str, name, song_size, song_kbps);
-    return send_line(fd, "START %lld %s", song_size, song_name);
+    server_log("[%s] GET %s -> %lld bytes, %d kbps", client_str, name, song_size, song_kbps);
+    return send_line(fd, "START %lld %d 0 %s", song_size, (int)song_duration(), song_name);
 }
 
 static int cmd_pause(int fd)
 {
     if (!has_song)
         return send_line(fd, "ERR no hay ninguna cancion sonando");
-    printf("[%s] PAUSE\n", client_str);
+    server_log("[%s] PAUSE", client_str);
 
     if (room >= 0) {
         room_pause(room);
@@ -290,7 +292,7 @@ static int cmd_resume(int fd)
 {
     if (!has_song)
         return send_line(fd, "ERR no hay ninguna cancion sonando");
-    printf("[%s] RESUME\n", client_str);
+    server_log("[%s] RESUME", client_str);
 
     if (room >= 0) {
         room_resume(room);
@@ -321,7 +323,7 @@ static int cmd_seek(int fd, const char *arg)
     if (target > song_duration())
         target = song_duration();       /* Al final: va a mandar END enseguida */
 
-    printf("[%s] SEEK -> %d:%02d\n", client_str, (int)target / 60, (int)target % 60);
+    server_log("[%s] SEEK -> %d:%02d", client_str, (int)target / 60, (int)target % 60);
 
     if (room >= 0) {
         room_play(room, song_name, song_duration(), target);    /* Salto para todos */
@@ -337,7 +339,7 @@ static int cmd_seek(int fd, const char *arg)
 /* QUIT: saca la cancion (deja de sonar) */
 static int cmd_quit(int fd)
 {
-    printf("[%s] QUIT\n", client_str);
+    server_log("[%s] QUIT", client_str);
     if (room >= 0) {
         room_stop(room);
         return sync_room(fd);
@@ -366,7 +368,7 @@ static int cmd_join(int fd, const char *name)
         return send_line(fd, "ERR no hay lugar para mas salas");
 
     table_room_info(room, &info);
-    printf("[%s] JOIN %s (%d integrantes)\n", client_str, name, info.members);
+    server_log("[%s] JOIN %s (%d integrantes)", client_str, name, info.members);
 
     /* Si la acaba de crear con su cancion, ya esta sincronizado. Si no, se
      * fuerza la sincronizacion para que pase a escuchar lo de la sala. */
@@ -401,7 +403,7 @@ static int cmd_leave(int fd)
         table_stop(table_row);
     }
 
-    printf("[%s] LEAVE %s\n", client_str, info.name);
+    server_log("[%s] LEAVE %s", client_str, info.name);
     table_leave(table_row);
     room = -1;
     return send_line(fd, "LEFT");
@@ -482,7 +484,7 @@ static int send_next_block(int fd)
      * queda en 1 para que PAUSE / RESUME / SEEK sigan funcionando */
     fclose(song);
     song = NULL;
-    printf("[%s] Cancion enviada completa\n", client_str);
+    server_log("[%s] Cancion enviada completa", client_str);
     return send_line(fd, "END");
 }
 
@@ -543,5 +545,5 @@ void handle_client(int fd, const char *dir, const char *client, int row)
     if (song != NULL)
         fclose(song);
     table_remove(table_row);        /* Se borra su fila (y sale de su sala) */
-    printf("[%s] Desconectado (quedan %d clientes)\n", client_str, table_count());
+    server_log("[%s] Desconectado (quedan %d clientes)", client_str, table_count());
 }

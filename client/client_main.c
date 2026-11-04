@@ -40,6 +40,7 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include "protocol.h"
+#include "output.h"
 #include "ring_buffer.h"
 #include "receiver.h"
 #include "playback.h"
@@ -80,10 +81,12 @@ int main(int argc, char *argv[])
     char line[LINE_SIZE];
     struct sockaddr_in server_addr;
 
-    if (argc != 2) {
-        fprintf(stderr, "Uso: %s <IP del servidor>\n", argv[0]);
+    /* Uso: ./bin/client <IP> [--gui] */
+    if (argc < 2 || argc > 3 || (argc == 3 && strcmp(argv[2], "--gui") != 0)) {
+        fprintf(stderr, "Uso: %s <IP del servidor> [--gui]\n", argv[0]);
         exit(1);
     }
+    gui_mode = (argc == 3);     /* Se hereda en los fork: los tres procesos lo ven */
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("socket");
@@ -103,7 +106,10 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    printf("Conectado a %s:%d\n", argv[1], PORT);
+    if (gui_mode)
+        show_event("CONNECTED %s %d", argv[1], PORT);
+    else
+        printf("Conectado a %s:%d\n", argv[1], PORT);
 
     /* El buffer se crea antes de los fork para que los dos hijos lo compartan */
     if ((ring = ring_create()) == NULL) {
@@ -143,18 +149,20 @@ int main(int argc, char *argv[])
         _exit(0);
     }
 
-    /* ---- Padre: consola ---- */
-    printf("%s\n", HELP);
+    /* ---- Padre: consola ----
+     * En modo --gui los comandos los escribe la interfaz grafica (por un
+     * pipe) en vez del usuario; el resto funciona igual. */
+    if (!gui_mode)
+        printf("%s\n", HELP);
     send_line(sockfd, "LIST");      /* Al conectarse, pide la lista */
 
     while (1) {
-        if (fgets(line, sizeof(line), stdin) == NULL)       /* Ctrl+D */
+        if (fgets(line, sizeof(line), stdin) == NULL)       /* Ctrl+D, o se cerro la interfaz */
             break;
         line[strcspn(line, "\r\n")] = '\0';
 
         if (line[0] == '\0') {
-            printf("> ");
-            fflush(stdout);
+            show_message("");
             continue;
         }
         if (strcmp(line, "SALIR") == 0)
@@ -170,8 +178,8 @@ int main(int argc, char *argv[])
                    strncmp(line, "JOIN ", 5) == 0 || strcmp(line, "LEAVE") == 0) {
             send_line(sockfd, "%s", line);
         } else {
-            printf("Comando desconocido. %s\n> ", HELP);
-            fflush(stdout);
+            show_message("Comando desconocido. %s", HELP);
+            show_event("ERROR comando desconocido: %s", line);
         }
     }
 

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Icono del servidor: una nota musical que "transmite" (ondas a la derecha) -->
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#252538" stroke="#383850" stroke-width="4"/>
+
+  <!-- Nota musical -->
+  <line x1="52" y1="32" x2="52" y2="82" stroke="#6aa2ff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M52 30 C68 34 76 44 72 60 C68 50 62 46 52 44 Z" fill="#6aa2ff"/>
+  <ellipse cx="41" cy="84" rx="14" ry="10" transform="rotate(-20 41 84)" fill="#6aa2ff"/>
+
+  <!-- Ondas de transmision -->
+  <path d="M82 56 A18 18 0 0 1 82 86" fill="none" stroke="#6aa2ff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M94 44 A34 34 0 0 1 94 98" fill="none" stroke="#6aa2ff" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+</svg>

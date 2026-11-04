@@ -4,3 +4,5 @@ received/
 songs/
 scripts/
 docs/
+venv/
+__pycache__/

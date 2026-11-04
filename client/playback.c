@@ -17,6 +17,7 @@
  */
 #include <stdio.h>
 #include "protocol.h"
+#include "output.h"
 #include "player.h"
 #include "playback.h"
 
@@ -58,8 +59,8 @@ void playback_run(ring_t *ring)
             /* Si falla el audio se sigue vaciando el buffer igual, para que el
              * receptor no se quede bloqueado esperando lugar */
             if (player && player_feed(player, block, len) == -1) {
-                printf("\nError al reproducir, se descarta el resto de la cancion\n> ");
-                fflush(stdout);
+                show_message("Error al reproducir, se descarta el resto de la cancion");
+                show_event("ERROR no se pudo reproducir el audio");
                 player_close(player);
                 player = NULL;
             }
@@ -69,8 +70,8 @@ void playback_run(ring_t *ring)
                 continue;                       /* Fin de una cancion vieja */
             player_close(player);               /* Espera a que termine de sonar */
             player = NULL;
-            printf("\nFin de la cancion\n> ");
-            fflush(stdout);
+            show_message("Fin de la cancion");
+            show_event("FINISHED");
 
         } else if (type == BLOCK_QUIT) {
             break;

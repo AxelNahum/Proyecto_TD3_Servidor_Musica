@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <mpg123.h>
 #include <out123.h>
+#include "output.h"
 #include "player.h"
 
 #define PCM_SIZE 16384      /* Tamanio del buffer de audio decodificado */
@@ -92,8 +93,8 @@ static int start_output(player_t *p)
     /* Informa que salida de audio se esta usando (util si no se escucha nada) */
     char *driver = NULL, *device = NULL;
     out123_driver_info(p->ao, &driver, &device);
-    printf("Audio: %ld Hz, %d canal(es), salida \"%s\" (dispositivo \"%s\")\n",
-           rate, channels, driver ? driver : "?", device ? device : "por defecto");
+    show_message("Audio: %ld Hz, %d canal(es), salida \"%s\" (dispositivo \"%s\")",
+                 rate, channels, driver ? driver : "?", device ? device : "por defecto");
     return 0;
 }
 

@@ -448,3 +448,65 @@ void table_print(void)
     unlock();
     fflush(stdout);
 }
+
+/*
+ * Lo mismo que table_print(), pero en lineas faciles de leer para la
+ * interfaz grafica (modo --gui):
+ *
+ *   STATS <clientes> <maximo> <salas>
+ *   CLIENT <ip:puerto> <estado> <posicion> <duracion> <sala o -> <cancion o ->
+ *   ...
+ *   END
+ *
+ * <estado> es NONE, PLAYING, PAUSED o FINISHED. Posicion y duracion en
+ * segundos. La cancion va al final porque puede tener espacios.
+ */
+void table_print_gui(void)
+{
+    int count = 0, rooms = 0;
+
+    lock();
+    remove_dead();
+
+    for (int i = 0; i < MAX_SESSIONS; i++)
+        count += table->rows[i].used;
+    for (int i = 0; i < MAX_ROOMS; i++)
+        rooms += table->rooms[i].used;
+
+    printf("STATS %d %d %d\n", count, limit, rooms);
+
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        session_t *s = &table->rows[i];
+        if (!s->used)
+            continue;
+
+        const playback_t *p = s->room >= 0 ? &table->rooms[s->room].play : &s->play;
+        const char *room    = s->room >= 0 ? table->rooms[s->room].name : "-";
+        double pos          = position_of(p);
+        const char *state   = "PLAYING";
+
+        if (p->state == STATE_NO_SONG)
+            state = "NONE";
+        else if (p->state == STATE_PAUSED)
+            state = "PAUSED";
+        else if (p->duration > 0 && pos >= p->duration)
+            state = "FINISHED";
+
+        printf("CLIENT %s %s %d %d %s %s\n", s->client, state, (int)pos, (int)p->duration,
+               room, p->state == STATE_NO_SONG ? "-" : p->song);
+    }
+
+    printf("END\n");
+    unlock();
+    fflush(stdout);
+}
+
+/* Se llama desde el manejador de Ctrl+C / SIGTERM: NO toma el mutex, porque
+ * si la senial llego justo cuando el padre lo tenia tomado, se trabaria para
+ * siempre. Solo lee los pid, asi que no hace falta. */
+void table_kill_children(void)
+{
+    for (int i = 0; i < MAX_SESSIONS; i++)
+        if (table->rows[i].used && table->rows[i].pid > 0)
+            kill(table->rows[i].pid, SIGTERM);
+}

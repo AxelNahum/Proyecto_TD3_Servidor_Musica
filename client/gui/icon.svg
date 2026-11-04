@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Icono del cliente (reproductor): auriculares con un boton de play -->
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#252538" stroke="#383850" stroke-width="4"/>
+
+  <!-- Vincha de los auriculares -->
+  <path d="M30 80 V66 A34 34 0 0 1 98 66 V80" fill="none" stroke="#6aa2ff" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Almohadillas -->
+  <rect x="22" y="72" width="20" height="32" rx="8" fill="#6aa2ff"/>
+  <rect x="86" y="72" width="20" height="32" rx="8" fill="#6aa2ff"/>
+
+  <!-- Boton de play en el medio -->
+  <path d="M56 70 L76 83 L56 96 Z" fill="#66bb6a"/>
+</svg>

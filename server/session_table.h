@@ -38,7 +38,9 @@ int  table_add(const char *client);
 void table_set_pid(int row, pid_t pid);
 int  table_count(void);
 int  table_max(void);
-void table_print(void);
+void table_print(void);         /* Tabla para la terminal */
+void table_print_gui(void);     /* Tabla en lineas para la interfaz grafica (modo --gui) */
+void table_kill_children(void); /* Termina a todos los hijos (al cerrar el servidor) */
 
 /* ---- Las usa el hijo que atiende al cliente de esa fila (escuchando solo) ---- */
 

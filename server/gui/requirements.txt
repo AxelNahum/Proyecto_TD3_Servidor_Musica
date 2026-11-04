@@ -1,0 +1,4 @@
+# Solo la parte basica de Qt (ventanas, botones, iconos SVG): ~300 MB instalada.
+# "PySide6" a secas instala ademas los Addons (navegador web, 3D, multimedia...):
+# unos 500 MB mas que no se usan.
+PySide6-Essentials

@@ -7,7 +7,8 @@
  *   Cliente -> Servidor          Servidor -> Cliente
  *   -------------------          -------------------------------------------
  *   LIST                         SONGS <n>           y luego n lineas con nombres
- *   GET <nombre>                 START <tamanio> <nombre>
+ *   GET <nombre>                 START <tamanio> <duracion> <desde> <nombre>
+ *                                (duracion y desde en segundos; desde > 0 al entrar a una sala empezada)
  *                                DATA <n>            y luego n bytes de la cancion
  *                                DATA <n> ...        (muchos, hasta terminar)
  *                                END                 termino la cancion

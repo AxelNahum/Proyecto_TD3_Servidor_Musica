@@ -31,22 +31,38 @@ El servidor tiene una carpeta con canciones MP3 y atiende a varios clientes a la
 - [x] Buffer circular en el cliente (productor-consumidor con `fork()`, memoria compartida y semáforos)
 - [x] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
 - [x] Salas de reproducción sincronizada (`JOIN`, `LEAVE` y `ROOMS`)
-- [ ] Interfaz gráfica del cliente
+- [x] Interfaces gráficas del servidor y del cliente (Python + PySide6), con modo oscuro y claro
+
+## Instalación
+
+Cada máquina necesita solo su parte: la **servidor** usa `server/` y `common/`, la **cliente** usa `client/` y `common/`. Las canciones (MP3) van en la carpeta `songs/` de la máquina servidor.
+
+```bash
+# Máquina servidor
+make deps-server              # paquetes del sistema (pide la contraseña; una sola vez)
+make install-gui-server       # compila, instala PySide6 y crea el acceso directo "Servidor de Musica"
+
+# Máquina cliente
+make deps-client              # paquetes del sistema (pide la contraseña; una sola vez)
+make install-gui-client       # compila, instala PySide6 y crea el acceso directo "Reproductor de Musica"
+```
+
+Las interfaces gráficas son opcionales: sin ellas alcanza con `make server` / `make client` (no hace falta Python).
 
 ## Uso
 
-El cliente necesita la librería de audio: `sudo apt install libmpg123-dev`.
+**Con interfaz gráfica:** abrir *Servidor de Musica* y apretar **Iniciar** (muestra la IP del servidor); en cada cliente, abrir *Reproductor de Musica*, escribir esa IP y apretar **Conectar**.
+
+**Por terminal:**
 
 ```bash
-make server                     # en la PC servidor
-./bin/server [carpeta] [max]    # por defecto songs/ y 5 clientes
+./bin/server [carpeta] [max]    # en la PC servidor (por defecto songs/ y 5 clientes)
 kill -USR1 <pid>                # muestra la tabla de clientes (el PID se ve al arrancar)
 
-make client                     # en la PC cliente
-./bin/client <IP del servidor>
+./bin/client <IP del servidor>  # en la PC cliente
 ```
 
-Comandos del cliente:
+Comandos del cliente por terminal:
 
 | Comando | Qué hace |
 |---|---|
@@ -59,6 +75,16 @@ Comandos del cliente:
 | `JOIN <sala>` | Entra a una sala (si no existe, la crea); ahí los comandos afectan a todos |
 | `LEAVE` | Sale de la sala y sigue escuchando solo |
 | `SALIR` | Cierra el cliente |
+
+## Estructura
+
+```
+common/        protocolo y memoria compartida (lo usan los dos)
+server/        servidor en C
+server/gui/    interfaz gráfica del servidor (Python)
+client/        cliente en C
+client/gui/    interfaz gráfica del cliente (Python)
+```
 
 ## Licencia
 
