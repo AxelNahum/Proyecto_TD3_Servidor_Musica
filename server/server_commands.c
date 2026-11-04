@@ -187,6 +187,9 @@ static int sync_room(int fd)
         room_seek_id = info.seek_id;
         if (seek_song(info.position) == -1)
             return send_line(fd, "ERR no se pudo volver a abrir la cancion");
+        /* Al recibir SEEKED el cliente vacia el buffer y reanuda el reproductor.
+         * Por eso se anota paused = 0: si la sala esta en pausa, el bloque de
+         * abajo le vuelve a mandar PAUSED (un SEEK no saca la pausa). */
         paused = 0;
         if (send_line(fd, "SEEKED %d", (int)info.position) == -1)
             return -1;
@@ -326,14 +329,20 @@ static int cmd_seek(int fd, const char *arg)
     server_log("[%s] SEEK -> %d:%02d", client_str, (int)target / 60, (int)target % 60);
 
     if (room >= 0) {
-        room_play(room, song_name, song_duration(), target);    /* Salto para todos */
+        room_seek(room, target);        /* Salto para todos (la pausa no cambia) */
         return sync_room(fd);
     }
     if (seek_song(target) == -1)
         return send_line(fd, "ERR no se pudo volver a abrir la cancion");
-    paused = 0;
-    table_play(table_row, song_name, song_duration(), target);
-    return send_line(fd, "SEEKED %d", (int)target);
+    table_seek(table_row, target);      /* Si estaba en pausa, sigue en pausa */
+    if (send_line(fd, "SEEKED %d", (int)target) == -1)
+        return -1;
+
+    /* Al recibir SEEKED el cliente vacia el buffer y reanuda el reproductor:
+     * si estaba en pausa, se le avisa que siga en pausa */
+    if (paused)
+        return send_line(fd, "PAUSED");
+    return 0;
 }
 
 /* QUIT: saca la cancion (deja de sonar) */

@@ -15,6 +15,7 @@
  *   PAUSE                        PAUSED              el servidor deja de mandar DATA
  *   RESUME                       RESUMED             el servidor sigue mandando DATA
  *   SEEK <seg>                   SEEKED <seg>        sigue mandando DATA desde ese segundo
+ *                                (+ PAUSED si estaba en pausa: un SEEK no saca la pausa)
  *   SEEK +<seg> / SEEK -<seg>    SEEKED <seg>        adelanta / atrasa
  *   QUIT                         STOPPED             saca la cancion
  *   JOIN <sala>                  JOINED <sala> <n>   entra (n = integrantes); si no existe la crea

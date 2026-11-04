@@ -118,6 +118,14 @@ static void play_resume(playback_t *p)
     }
 }
 
+/* Salto (SEEK) dentro de la misma cancion: cambia la posicion pero NO la
+ * pausa. Si estaba en pausa, sigue en pausa en la posicion nueva. */
+static void play_seek(playback_t *p, double to)
+{
+    p->pos_base = to;
+    p->since    = now();
+}
+
 static void play_stop(playback_t *p)
 {
     p->state   = STATE_NO_SONG;
@@ -267,6 +275,13 @@ void table_stop(int row)
     unlock();
 }
 
+void table_seek(int row, double to_sec)
+{
+    lock();
+    play_seek(&table->rows[row].play, to_sec);
+    unlock();
+}
+
 double table_get_position(int row)
 {
     double pos;
@@ -354,6 +369,15 @@ void room_play(int room, const char *song, double duration, double from_sec)
     lock();
     play_start(&table->rooms[room].play, song, duration, from_sec);
     table->rooms[room].seek_id++;       /* Es un salto: cancion nueva o SEEK */
+    table->rooms[room].version++;
+    unlock();
+}
+
+void room_seek(int room, double to_sec)
+{
+    lock();
+    play_seek(&table->rooms[room].play, to_sec);
+    table->rooms[room].seek_id++;       /* Es un salto (la pausa no cambia) */
     table->rooms[room].version++;
     unlock();
 }

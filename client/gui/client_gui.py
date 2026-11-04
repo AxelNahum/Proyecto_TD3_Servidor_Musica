@@ -31,12 +31,12 @@ import sys
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSettings, Qt, QTimer
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtCore import QPointF, QProcess, QRectF, QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPainter, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-    QSlider, QVBoxLayout, QWidget,
+    QSlider, QStyle, QStyleOptionSlider, QVBoxLayout, QWidget,
 )
 
 import theme     # Esta en la misma carpeta
@@ -48,6 +48,77 @@ CLIENT_BIN = PROJECT_DIR / "bin" / "client"
 SEEK_STEP = 10              # Segundos que adelantan / atrasan los botones
 ROOMS_REFRESH_MS = 3000     # Cada cuanto se actualiza la lista de salas
 ROOM_NAME = re.compile(r"^[A-Za-z0-9_-]{1,31}$")   # Lo que acepta el servidor
+
+
+def draw_icon(kind, color, size=18, disabled_color=None):
+    """Icono de reproductor (play, pause, rewind, forward, stop). Si se pasa
+    'disabled_color', el boton deshabilitado lo muestra en ese color."""
+    icon = QIcon(draw_pixmap(kind, color, size))
+    if disabled_color:
+        icon.addPixmap(draw_pixmap(kind, disabled_color, size), QIcon.Disabled)
+    return icon
+
+
+def draw_pixmap(kind, color, size):
+    """Dibuja el icono con triangulos y rectangulos en vez de usar caracteres
+    como ⏪ o ⏩, porque Ubuntu los muestra como emojis naranjas."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(color))
+    s = size
+
+    def triangle(tip_x, base_x):
+        """Triangulo con la punta en tip_x y la base vertical en base_x."""
+        painter.drawPolygon(QPolygonF([QPointF(base_x, s * 0.15),
+                                       QPointF(tip_x, s * 0.5),
+                                       QPointF(base_x, s * 0.85)]))
+
+    if kind == "play":
+        triangle(s * 0.88, s * 0.22)
+    elif kind == "pause":
+        painter.drawRoundedRect(QRectF(s * 0.20, s * 0.15, s * 0.22, s * 0.70), 1.5, 1.5)
+        painter.drawRoundedRect(QRectF(s * 0.58, s * 0.15, s * 0.22, s * 0.70), 1.5, 1.5)
+    elif kind == "forward":                     # ▶▶  adelantar
+        triangle(s * 0.52, s * 0.05)
+        triangle(s * 0.98, s * 0.51)
+    elif kind == "rewind":                      # ◀◀  atrasar
+        triangle(s * 0.02, s * 0.49)
+        triangle(s * 0.48, s * 0.95)
+    elif kind == "stop":
+        painter.drawRoundedRect(QRectF(s * 0.2, s * 0.2, s * 0.6, s * 0.6), 2, 2)
+
+    painter.end()
+    return pixmap
+
+
+class SeekSlider(QSlider):
+    """Barra de posicion: un clic en cualquier lugar salta ahi.
+    (Un QSlider comun, con un clic en la linea, solo avanza un "paso").
+
+    Truco: al hacer clic fuera del circulo, primero se mueve el circulo hasta
+    donde se hizo clic y despues se deja que Qt maneje el clic normal. Para
+    Qt es como si se hubiera agarrado el circulo, asi que se puede seguir
+    arrastrando y al soltar avisa con sliderReleased (que manda el SEEK)."""
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.maximum() > self.minimum():
+            option = QStyleOptionSlider()
+            self.initStyleOption(option)
+            style = self.style()
+            handle = style.subControlRect(QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
+            click = event.position().toPoint()
+
+            if not handle.contains(click):
+                groove = style.subControlRect(QStyle.CC_Slider, option, QStyle.SC_SliderGroove, self)
+                span = max(groove.width() - handle.width(), 1)
+                x = click.x() - groove.x() - handle.width() // 2
+                self.setValue(QStyle.sliderValueFromPosition(
+                    self.minimum(), self.maximum(), min(max(x, 0), span), span))
+
+        super().mousePressEvent(event)
 
 
 def format_time(seconds):
@@ -195,12 +266,23 @@ class ClientWindow(QMainWindow):
         self.room_label = QLabel()
         self.room_label.setObjectName("cardHint")
 
+        # Boton para sacar la cancion: arriba a la derecha, separado de los
+        # controles de reproduccion
+        self.stop_button = QPushButton(" Sacar")
+        self.stop_button.setObjectName("small")
+        self.stop_button.setToolTip("Sacar la canción (deja de sonar)")
+        self.stop_button.clicked.connect(lambda: self.send("QUIT"))
+
+        title_row = QHBoxLayout()
+        title_row.addWidget(self.song_label, stretch=1)
+        title_row.addWidget(self.stop_button, alignment=Qt.AlignTop)
+
         # Barra de posicion con el tiempo a cada lado
         self.position_label = QLabel("0:00")
         self.position_label.setObjectName("time")
         self.duration_label = QLabel("0:00")
         self.duration_label.setObjectName("time")
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = SeekSlider(Qt.Horizontal)
         self.slider.sliderPressed.connect(self.slider_pressed)
         self.slider.sliderReleased.connect(self.slider_released)
         self.slider.sliderMoved.connect(lambda v: self.position_label.setText(format_time(v)))
@@ -211,35 +293,33 @@ class ClientWindow(QMainWindow):
         bar.addWidget(self.slider, stretch=1)
         bar.addWidget(self.duration_label)
 
-        # Botones: atrasar, play/pausa, adelantar, detener
-        self.back_button = QPushButton("⏪")
+        # Botones: atrasar, play/pausa, adelantar (el play queda en el medio).
+        # Solo iconos (el detalle esta en el cartel al pasar el mouse). Los iconos
+        # se dibujan en apply_theme(), porque el color depende del modo.
+        self.back_button = QPushButton()
         self.back_button.setObjectName("transport")
         self.back_button.setToolTip(f"Atrasar {SEEK_STEP} segundos")
         self.back_button.clicked.connect(lambda: self.send(f"SEEK -{SEEK_STEP}"))
 
-        self.play_button = QPushButton("▶")
+        self.play_button = QPushButton()
         self.play_button.setObjectName("playButton")
         self.play_button.setToolTip("Reproducir / Pausa")
+        self.play_button.setIconSize(QSize(22, 22))
         self.play_button.clicked.connect(self.play_pause)
 
-        self.forward_button = QPushButton("⏩")
+        self.forward_button = QPushButton()
         self.forward_button.setObjectName("transport")
         self.forward_button.setToolTip(f"Adelantar {SEEK_STEP} segundos")
         self.forward_button.clicked.connect(lambda: self.send(f"SEEK +{SEEK_STEP}"))
 
-        self.stop_button = QPushButton("⏹")
-        self.stop_button.setObjectName("transport")
-        self.stop_button.setToolTip("Sacar la canción")
-        self.stop_button.clicked.connect(lambda: self.send("QUIT"))
-
         buttons = QHBoxLayout()
-        buttons.setSpacing(12)
+        buttons.setSpacing(16)
         buttons.addStretch()
-        for button in (self.back_button, self.play_button, self.forward_button, self.stop_button):
+        for button in (self.back_button, self.play_button, self.forward_button):
             buttons.addWidget(button)
         buttons.addStretch()
 
-        layout.addWidget(self.song_label)
+        layout.addLayout(title_row)
         layout.addWidget(self.room_label)
         layout.addSpacing(4)
         layout.addLayout(bar)
@@ -300,6 +380,14 @@ class ClientWindow(QMainWindow):
         self.setStyleSheet(theme.stylesheet(self.dark))
         self.theme_button.setText("Modo claro 🔆" if self.dark else "Modo oscuro 🌙")
 
+        # Iconos de los botones, con el color del texto de este modo
+        colors = theme.DARK if self.dark else theme.LIGHT
+        text, dim = colors["text"], colors["disabled"]
+        self.back_button.setIcon(draw_icon("rewind", text, disabled_color=dim))
+        self.forward_button.setIcon(draw_icon("forward", text, disabled_color=dim))
+        self.stop_button.setIcon(draw_icon("stop", text, 12, disabled_color=dim))
+        self.update_play_button()
+
     def toggle_theme(self):
         self.dark = not self.dark
         self.settings.setValue("dark_mode", self.dark)
@@ -356,7 +444,8 @@ class ClientWindow(QMainWindow):
 
     def update_play_button(self):
         # Con algo sonando: pausa / reanudar. Sin nada: reproduce la cancion elegida
-        self.play_button.setText("⏸" if self.song and not self.paused else "▶")
+        playing = self.song is not None and not self.paused
+        self.play_button.setIcon(draw_icon("pause" if playing else "play", "white", 22))
         self.play_button.setEnabled(self.process is not None)
 
     def update_room_label(self):

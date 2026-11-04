@@ -268,37 +268,47 @@ def stylesheet(dark=True):
         font-family: "DejaVu Sans Mono", "Ubuntu Mono", monospace;
     }}
 
-    /* Barra de posicion */
+    /* Barra de posicion (con alto suficiente para que no se corte el circulo) */
+    QSlider:horizontal {{
+        min-height: 24px;
+    }}
+    /* El circulo: Qt calcula su ALTO como la linea (6) + 2 x el margen negativo
+     * (4) = 14, igual que el ancho, asi es un circulo. El margen de la linea
+     * (4) tiene que ser igual, porque el circulo solo puede salirse de la
+     * linea hasta ese margen (si no, se corta). */
     QSlider::groove:horizontal {{
         height: 6px;
         border-radius: 3px;
         background: {c['control']};
+        margin: 4px 0;
     }}
     QSlider::sub-page:horizontal {{
         height: 6px;
         border-radius: 3px;
         background: {c['accent']};
+        margin: 4px 0;      /* Igual que la linea, si no la parte azul queda mas gruesa */
     }}
     QSlider::handle:horizontal {{
         width: 14px;
-        height: 14px;
-        margin: -5px 0;
+        height: 14px;       /* Algunas versiones de Qt lo necesitan para dibujarlo */
+        margin: -4px 0;
         border-radius: 7px;
         background: {c['text']};
     }}
     QSlider::handle:horizontal:disabled {{
-        background: {c['disabled']};
+        background: transparent;    /* Sin cancion no se muestra el circulo */
     }}
     QSlider::sub-page:horizontal:disabled {{
-        background: {c['disabled']};
+        background: transparent;
     }}
 
     /* Botones del reproductor (atrasar, play/pausa, adelantar, detener) */
     QPushButton#transport {{
-        font-size: 13pt;
         min-width: 46px;
-        min-height: 34px;
-        border-radius: 17px;
+        max-width: 46px;
+        min-height: 36px;
+        max-height: 36px;
+        border-radius: 18px;
         padding: 0;
     }}
     QPushButton#playButton {{

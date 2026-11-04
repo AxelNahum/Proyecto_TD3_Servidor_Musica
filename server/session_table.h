@@ -49,6 +49,7 @@ void   table_play(int row, const char *song, double duration_sec, double from_se
 void   table_pause(int row);
 void   table_resume(int row);
 void   table_stop(int row);
+void   table_seek(int row, double to_sec);    /* Cambia la posicion; si estaba en pausa, sigue en pausa */
 double table_get_position(int row); /* Segundo por el que va la reproduccion */
 
 /* ---- Salas ---- */
@@ -69,6 +70,7 @@ int  table_room_info(int room, room_info_t *info);
 /* Cambian el estado de la sala (y su 'version'); los hijos de todos los
  * integrantes lo detectan y se lo mandan a sus clientes. */
 void room_play(int room, const char *song, double duration, double from_sec);
+void room_seek(int room, double to_sec);       /* Salto: cambia la posicion, no la pausa */
 void room_pause(int room);
 void room_resume(int room);
 void room_stop(int room);
