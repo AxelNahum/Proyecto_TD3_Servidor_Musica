@@ -1,0 +1,3 @@
+# Los scripts de bash tienen que tener fin de linea de Linux (LF) o no corren
+*.sh text eol=lf
+Makefile text eol=lf

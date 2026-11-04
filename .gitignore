@@ -1,3 +1,5 @@
-servidor
-cliente
+bin/
 *.o
+received/
+songs/
+scripts/

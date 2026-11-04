@@ -1,13 +1,28 @@
 CC     = gcc
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -Icommon
 
-all: servidor cliente
+BIN = bin
 
-servidor: servidor.c
-	$(CC) $(CFLAGS) servidor.c -o servidor
+COMMON = common/protocol.c
+SERVER = server/server_main.c server/server_commands.c $(COMMON)
+CLIENT = client/client_main.c client/client_commands.c $(COMMON)
 
-cliente: cliente.c
-	$(CC) $(CFLAGS) cliente.c -o cliente
+all: $(BIN)/server $(BIN)/client
+
+$(BIN)/server: $(SERVER) common/*.h server/*.h | $(BIN)
+	$(CC) $(CFLAGS) $(SERVER) -o $@
+
+$(BIN)/client: $(CLIENT) common/*.h client/*.h | $(BIN)
+	$(CC) $(CFLAGS) $(CLIENT) -o $@
+
+$(BIN):
+	mkdir -p $(BIN)
+
+# Genera las canciones de prueba (tonos) en la carpeta songs/
+tones:
+	bash scripts/generate_tones.sh
 
 clean:
-	rm -f servidor cliente
+	rm -rf $(BIN) received
+
+.PHONY: all tones clean
