@@ -27,7 +27,7 @@ El servidor tiene una carpeta con canciones MP3 y atiende a varios clientes a la
 - [x] Protocolo de aplicación: `LIST` y `GET`
 - [x] Reproducción mientras se recibe la canción (*streaming*)
 - [ ] Controles: `PAUSE`, `RESUME`, `SEEK` y `QUIT`
-- [ ] Buffer circular en el cliente (productor-consumidor con semáforos)
+- [x] Buffer circular en el cliente (productor-consumidor con `fork()`, memoria compartida y semáforos)
 - [ ] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
 - [ ] Salas de reproducción sincronizada (`JOIN` y `LEAVE`)
 - [ ] Interfaz gráfica del cliente

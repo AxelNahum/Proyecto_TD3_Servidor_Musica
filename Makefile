@@ -5,7 +5,8 @@ BIN = bin
 
 COMMON = common/protocol.c
 SERVER = server/server_main.c server/server_commands.c $(COMMON)
-CLIENT = client/client_main.c client/client_commands.c client/player.c $(COMMON)
+CLIENT = client/client_main.c client/client_commands.c client/player.c \
+         client/ring_buffer.c common/ipc.c $(COMMON)
 
 # Librerias del cliente: decodificar MP3 y reproducir audio (sudo apt install libmpg123-dev)
 CLIENT_LIBS = -lmpg123 -lout123
