@@ -6,9 +6,17 @@
  *
  *   Cliente -> Servidor          Servidor -> Cliente
  *   -------------------          -------------------------------------------
- *   LIST                         OK <n>            y luego n lineas con nombres
- *   GET <nombre>                 OK <tamanio>      y luego <tamanio> bytes del archivo
+ *   LIST                         SONGS <n>           y luego n lineas con nombres
+ *   GET <nombre>                 START <tamanio> <nombre>
+ *                                DATA <n>            y luego n bytes de la cancion
+ *                                DATA <n> ...        (muchos, hasta terminar)
+ *                                END                 termino la cancion
+ *   PAUSE                        PAUSED              el servidor deja de mandar DATA
+ *   RESUME                       RESUMED             el servidor sigue mandando DATA
  *   (cualquier error)            ERR <mensaje>
+ *
+ * El audio va en paquetes DATA para que el cliente pueda recibir otros
+ * mensajes (respuestas a comandos) en medio de la cancion.
  */
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
@@ -18,11 +26,15 @@
 
 #define PORT        3490    /* Puerto donde escucha el servidor */
 #define LINE_SIZE   512     /* Largo maximo de una linea del protocolo */
-#define BLOCK_SIZE  4096    /* Tamanio de cada bloque de la cancion */
+#define BLOCK_SIZE  4096    /* Tamanio maximo de cada paquete DATA */
 
 /* Envia los 'len' bytes de 'buf' (send() puede enviar menos de lo pedido).
  * Devuelve 0 si se envio todo, -1 si hubo error. */
 int send_all(int fd, const void *buf, size_t len);
+
+/* Recibe exactamente 'len' bytes en 'buf' (recv() puede devolver menos).
+ * Devuelve 0 si llego todo, -1 si se corto la conexion o hubo error. */
+int recv_all(int fd, void *buf, size_t len);
 
 /* Envia una linea de texto con formato printf, agregando '\n' al final. */
 int send_line(int fd, const char *fmt, ...);

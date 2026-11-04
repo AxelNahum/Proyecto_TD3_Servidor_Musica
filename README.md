@@ -26,7 +26,8 @@ El servidor tiene una carpeta con canciones MP3 y atiende a varios clientes a la
 - [x] Servidor TCP concurrente con `fork()`
 - [x] Protocolo de aplicación: `LIST` y `GET`
 - [x] Reproducción mientras se recibe la canción (*streaming*)
-- [ ] Controles: `PAUSE`, `RESUME`, `SEEK` y `QUIT`
+- [x] Controles: `PAUSE` y `RESUME`
+- [ ] Controles: `SEEK` y `QUIT`
 - [x] Buffer circular en el cliente (productor-consumidor con `fork()`, memoria compartida y semáforos)
 - [ ] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
 - [ ] Salas de reproducción sincronizada (`JOIN` y `LEAVE`)
@@ -42,8 +43,16 @@ make server                     # en la PC servidor
 
 make client                     # en la PC cliente
 ./bin/client <IP del servidor>
-> PLAY <cancion>                # reproduce mientras recibe
 ```
+
+Comandos del cliente:
+
+| Comando | Qué hace |
+|---|---|
+| `LIST` | Muestra las canciones disponibles |
+| `PLAY <canción>` | Reproduce la canción mientras la recibe |
+| `PAUSE` / `RESUME` | Pausa / reanuda |
+| `SALIR` | Cierra el cliente |
 
 ## Licencia
 

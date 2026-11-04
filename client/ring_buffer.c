@@ -1,6 +1,6 @@
 /*
  * ring_buffer.c
- * Buffer circular productor-consumidor con 3 semaforos:
+ * Buffer circular productor-consumidor con semaforos:
  *
  *   SEM_FREE   cuenta los lugares libres   (arranca en RING_SLOTS)
  *   SEM_FULL   cuenta los bloques ocupados (arranca en 0)
@@ -11,6 +11,15 @@
  *
  * Asi el productor se bloquea cuando el buffer esta lleno y el consumidor
  * cuando esta vacio, sin consumir procesador mientras esperan.
+ *
+ * Ademas hay un cuarto semaforo para la pausa:
+ *
+ *   SEM_PLAY   1 = reproduciendo, 0 = en pausa
+ *
+ *   Reproductor, antes de cada bloque: down(PLAY) up(PLAY)
+ *     -> si esta en 1 pasa de largo; si esta en 0 se queda esperando.
+ *   PAUSE:  down(PLAY)  (lo deja en 0)
+ *   RESUME: up(PLAY)    (lo vuelve a 1 y despierta al reproductor)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,24 +30,24 @@
 
 #define RING_SLOTS 64       /* Lugares del buffer: 64 x 4 KB = 256 KB */
 
-enum { SEM_FREE, SEM_FULL, SEM_MUTEX, SEM_COUNT };
+enum { SEM_FREE, SEM_FULL, SEM_MUTEX, SEM_PLAY, SEM_COUNT };
 
-/* Un lugar del buffer: un bloque recibido del socket */
+/* Un lugar del buffer */
 typedef struct {
-    size_t len;
-    char   data[BLOCK_SIZE];
+    block_type_t type;
+    size_t       len;
+    char         data[BLOCK_SIZE];
 } slot_t;
 
-/* Lo que vive en la memoria compartida (lo ven el padre y el hijo) */
+/* Lo que vive en la memoria compartida (lo ven todos los procesos) */
 typedef struct {
     slot_t slots[RING_SLOTS];
     int    in;              /* Proximo lugar donde escribe el productor */
     int    out;             /* Proximo lugar de donde lee el consumidor */
-    int    failed;          /* 1 si el productor termino por un error */
 } ring_shared_t;
 
 /* Lo que tiene cada proceso: los ids y el puntero a la memoria compartida.
- * Despues del fork el hijo tiene una copia de esto que apunta al mismo segmento. */
+ * Despues del fork cada hijo tiene una copia de esto que apunta al mismo segmento. */
 struct ring {
     int            shm_id;
     int            sem_id;
@@ -61,27 +70,25 @@ ring_t *ring_create(void)
 
     r->shared = shared_mem_attach(r->shm_id);
     r->sem_id = semaphore_create(SEM_COUNT);
-    if (r->shared == NULL || r->sem_id == -1 || ring_reset(r) == -1) {
+    if (r->shared == NULL || r->sem_id == -1) {
+        ring_destroy(r);
+        return NULL;
+    }
+
+    r->shared->in  = 0;
+    r->shared->out = 0;
+
+    if (semaphore_set(r->sem_id, SEM_FREE,  RING_SLOTS) == -1 ||
+        semaphore_set(r->sem_id, SEM_FULL,  0)          == -1 ||
+        semaphore_set(r->sem_id, SEM_MUTEX, 1)          == -1 ||
+        semaphore_set(r->sem_id, SEM_PLAY,  1)          == -1) {
         ring_destroy(r);
         return NULL;
     }
     return r;
 }
 
-int ring_reset(ring_t *r)
-{
-    r->shared->in     = 0;
-    r->shared->out    = 0;
-    r->shared->failed = 0;
-
-    if (semaphore_set(r->sem_id, SEM_FREE,  RING_SLOTS) == -1 ||
-        semaphore_set(r->sem_id, SEM_FULL,  0)          == -1 ||
-        semaphore_set(r->sem_id, SEM_MUTEX, 1)          == -1)
-        return -1;
-    return 0;
-}
-
-int ring_put(ring_t *r, const void *data, size_t len)
+int ring_put(ring_t *r, block_type_t type, const void *data, size_t len)
 {
     slot_t *slot;
 
@@ -94,7 +101,8 @@ int ring_put(ring_t *r, const void *data, size_t len)
         return -1;
 
     slot = &r->shared->slots[r->shared->in];
-    slot->len = len;
+    slot->type = type;
+    slot->len  = len;
     if (len > 0)
         memcpy(slot->data, data, len);
     r->shared->in = (r->shared->in + 1) % RING_SLOTS;  /* Avanza en circulo */
@@ -104,7 +112,7 @@ int ring_put(ring_t *r, const void *data, size_t len)
     return semaphore_up(r->sem_id, SEM_FULL);           /* Avisa que hay un bloque */
 }
 
-int ring_get(ring_t *r, void *buf, size_t size)
+int ring_get(ring_t *r, block_type_t *type, void *buf, size_t size)
 {
     slot_t *slot;
     size_t len;
@@ -115,6 +123,7 @@ int ring_get(ring_t *r, void *buf, size_t size)
         return -1;
 
     slot = &r->shared->slots[r->shared->out];
+    *type = slot->type;
     len = slot->len < size ? slot->len : size;
     memcpy(buf, slot->data, len);
     r->shared->out = (r->shared->out + 1) % RING_SLOTS;
@@ -126,17 +135,21 @@ int ring_get(ring_t *r, void *buf, size_t size)
     return (int)len;
 }
 
-int ring_end(ring_t *r, int failed)
+int ring_pause(ring_t *r)
 {
-    /* Se anota antes de poner el bloque de fin: cuando el consumidor lo saque,
-     * el flag ya va a estar escrito */
-    r->shared->failed = failed;
-    return ring_put(r, NULL, 0);
+    return semaphore_down(r->sem_id, SEM_PLAY);
 }
 
-int ring_failed(ring_t *r)
+int ring_resume(ring_t *r)
 {
-    return r->shared->failed;
+    return semaphore_up(r->sem_id, SEM_PLAY);
+}
+
+int ring_wait_playing(ring_t *r)
+{
+    if (semaphore_down(r->sem_id, SEM_PLAY) == -1)
+        return -1;
+    return semaphore_up(r->sem_id, SEM_PLAY);
 }
 
 void ring_destroy(ring_t *r)

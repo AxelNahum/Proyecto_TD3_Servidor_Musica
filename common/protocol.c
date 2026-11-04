@@ -25,6 +25,25 @@ int send_all(int fd, const void *buf, size_t len)
     return 0;
 }
 
+int recv_all(int fd, void *buf, size_t len)
+{
+    char *p = buf;
+
+    while (len > 0) {
+        ssize_t n = recv(fd, p, len, 0);
+        if (n == 0)
+            return -1;                  /* Se cerro la conexion */
+        if (n == -1) {
+            if (errno == EINTR)
+                continue;
+            return -1;
+        }
+        p   += n;
+        len -= n;
+    }
+    return 0;
+}
+
 int send_line(int fd, const char *fmt, ...)
 {
     char line[LINE_SIZE];
