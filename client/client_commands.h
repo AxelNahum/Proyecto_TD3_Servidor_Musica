@@ -12,7 +12,13 @@
 /* Envia LIST y muestra las canciones disponibles */
 int request_list(int fd);
 
-/* Envia GET y guarda la cancion en "received/<nombre>" */
-int request_song(int fd, const char *name);
+/* Que hacer con la cancion que se recibe */
+typedef enum {
+    SONG_SAVE,      /* Guardarla en "received/<nombre>" */
+    SONG_PLAY       /* Reproducirla mientras se recibe (streaming) */
+} song_mode_t;
+
+/* Envia GET y guarda o reproduce la cancion segun 'mode' */
+int request_song(int fd, const char *name, song_mode_t mode);
 
 #endif

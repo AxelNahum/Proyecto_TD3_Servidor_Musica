@@ -4,6 +4,7 @@
  * canciones y luego acepta comandos (ver client_commands.c):
  *
  *   LIST            -> vuelve a pedir la lista de canciones
+ *   PLAY <nombre>   -> reproduce la cancion mientras la recibe (streaming)
  *   GET <nombre>    -> descarga la cancion en la carpeta "received/"
  *   SALIR           -> cierra el cliente
  *
@@ -57,7 +58,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    printf("\nComandos: LIST | GET <nombre> | SALIR\n");
+    printf("\nComandos: LIST | PLAY <nombre> | GET <nombre> | SALIR\n");
 
     while (1) {
         printf("> ");
@@ -73,10 +74,12 @@ int main(int argc, char *argv[])
 
         if (strcmp(line, "LIST") == 0)
             r = request_list(sockfd);
+        else if (strncmp(line, "PLAY ", 5) == 0)
+            r = request_song(sockfd, line + 5, SONG_PLAY);
         else if (strncmp(line, "GET ", 4) == 0)
-            r = request_song(sockfd, line + 4);
+            r = request_song(sockfd, line + 4, SONG_SAVE);
         else {
-            printf("Comando desconocido. Usa: LIST | GET <nombre> | SALIR\n");
+            printf("Comando desconocido. Usa: LIST | PLAY <nombre> | GET <nombre> | SALIR\n");
             r = 0;
         }
 
