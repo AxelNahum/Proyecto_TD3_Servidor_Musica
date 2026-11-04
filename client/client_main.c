@@ -20,7 +20,13 @@
  *   RESUME          -> la reanuda desde donde quedo
  *   SEEK <seg>      -> va a ese segundo; SEEK +10 / SEEK -10 adelanta / atrasa
  *   QUIT            -> saca la cancion (deja de sonar)
+ *   ROOMS           -> lista las salas
+ *   JOIN <sala>     -> entra a una sala (si no existe, la crea)
+ *   LEAVE           -> sale de la sala y sigue escuchando solo
  *   SALIR           -> cierra el cliente
+ *
+ * En una sala, PLAY / PAUSE / RESUME / SEEK / QUIT afectan a todos los
+ * integrantes.
  *
  * Uso: ./bin/client <IP del servidor>
  */
@@ -38,7 +44,8 @@
 #include "receiver.h"
 #include "playback.h"
 
-#define HELP "Comandos: LIST | PLAY <nombre> | PAUSE | RESUME | SEEK <seg> | QUIT | SALIR"
+#define HELP "Comandos: LIST | PLAY <nombre> | PAUSE | RESUME | SEEK <seg> | QUIT |\n" \
+             "          ROOMS | JOIN <sala> | LEAVE | SALIR"
 
 static ring_t *ring = NULL;     /* Buffer circular (memoria compartida) */
 static pid_t main_pid;          /* PID de la consola (el padre) */
@@ -159,7 +166,8 @@ int main(int argc, char *argv[])
             send_line(sockfd, "GET %s", line + 5);
         } else if (strcmp(line, "LIST") == 0 || strcmp(line, "PAUSE") == 0 ||
                    strcmp(line, "RESUME") == 0 || strcmp(line, "QUIT") == 0 ||
-                   strncmp(line, "SEEK ", 5) == 0) {
+                   strncmp(line, "SEEK ", 5) == 0 || strcmp(line, "ROOMS") == 0 ||
+                   strncmp(line, "JOIN ", 5) == 0 || strcmp(line, "LEAVE") == 0) {
             send_line(sockfd, "%s", line);
         } else {
             printf("Comando desconocido. %s\n> ", HELP);

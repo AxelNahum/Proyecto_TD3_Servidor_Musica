@@ -2,8 +2,8 @@
  * receiver.c
  * Proceso receptor (productor): es el UNICO que lee del socket.
  *
- *   socket --> DATA/START/SEEKED/STOPPED/END --> buffer circular --> (reproductor)
- *          \-> SONGS/PAUSED/RESUMED/ERR      --> pantalla
+ *   socket --> DATA/START/SEEKED/STOPPED/END          --> buffer circular --> (reproductor)
+ *          \-> SONGS/ROOMS/JOINED/LEFT/PAUSED/RESUMED/ERR --> pantalla
  *
  * Tambien es el que obedece al servidor:
  *   - START / SEEKED / STOPPED ("marcas"): pide vaciar el buffer, porque el
@@ -53,6 +53,28 @@ static void put_mark(ring_t *ring, block_type_t type)
     ring_request_flush(ring);
     resume_player(ring);
     ring_put(ring, type, NULL, 0);
+}
+
+/* Lee las n lineas que siguen a "ROOMS <n>" (<sala> <integrantes> <cancion>) y las muestra */
+static int show_room_list(int fd, int n)
+{
+    char line[LINE_SIZE], name[LINE_SIZE], song[LINE_SIZE];
+    int members;
+
+    if (n == 0) {
+        SHOW("No hay ninguna sala. Crea una con JOIN <nombre>");
+        return 0;
+    }
+    printf("\nSalas (%d):\n", n);
+    for (int i = 0; i < n; i++) {
+        if (read_line(fd, line, sizeof(line)) <= 0)
+            return -1;
+        if (sscanf(line, "%s %d %[^\n]", name, &members, song) == 3)
+            printf("  %-12s %d integrante(s)  - %s\n", name, members, song);
+    }
+    printf("> ");
+    fflush(stdout);
+    return 0;
 }
 
 /* Lee los n nombres que siguen a "SONGS <n>" y los muestra */
@@ -115,6 +137,16 @@ void receiver_run(int fd, ring_t *ring)
         } else if (sscanf(line, "SONGS %d", &n) == 1) {
             if (show_song_list(fd, n) == -1)
                 break;
+
+        } else if (sscanf(line, "ROOMS %d", &n) == 1) {
+            if (show_room_list(fd, n) == -1)
+                break;
+
+        } else if (sscanf(line, "JOINED %s %d", name, &n) == 2) {
+            SHOW("Entraste a la sala %s (%d integrante(s))", name, n);
+
+        } else if (strcmp(line, "LEFT") == 0) {
+            SHOW("Saliste de la sala: seguis escuchando solo");
 
         } else if (strncmp(line, "ERR ", 4) == 0) {
             SHOW("Error del servidor: %s", line + 4);

@@ -30,7 +30,7 @@ El servidor tiene una carpeta con canciones MP3 y atiende a varios clientes a la
 - [x] Controles: `SEEK` y `QUIT`, y cambio de canción al instante
 - [x] Buffer circular en el cliente (productor-consumidor con `fork()`, memoria compartida y semáforos)
 - [x] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
-- [ ] Salas de reproducción sincronizada (`JOIN` y `LEAVE`)
+- [x] Salas de reproducción sincronizada (`JOIN`, `LEAVE` y `ROOMS`)
 - [ ] Interfaz gráfica del cliente
 
 ## Uso
@@ -55,6 +55,9 @@ Comandos del cliente:
 | `PAUSE` / `RESUME` | Pausa / reanuda |
 | `SEEK <seg>` | Va a ese segundo; `SEEK +10` / `SEEK -10` adelanta / atrasa |
 | `QUIT` | Saca la canción |
+| `ROOMS` | Lista las salas |
+| `JOIN <sala>` | Entra a una sala (si no existe, la crea); ahí los comandos afectan a todos |
+| `LEAVE` | Sale de la sala y sigue escuchando solo |
 | `SALIR` | Cierra el cliente |
 
 ## Licencia

@@ -16,7 +16,14 @@
  *   SEEK <seg>                   SEEKED <seg>        sigue mandando DATA desde ese segundo
  *   SEEK +<seg> / SEEK -<seg>    SEEKED <seg>        adelanta / atrasa
  *   QUIT                         STOPPED             saca la cancion
+ *   JOIN <sala>                  JOINED <sala> <n>   entra (n = integrantes); si no existe la crea
+ *   LEAVE                        LEFT                sale y sigue escuchando solo
+ *   ROOMS                        ROOMS <n>           y luego n lineas: <sala> <integrantes> <cancion>
  *   (cualquier error)            ERR <mensaje>       (no cambia nada de lo que suena)
+ *
+ * En una sala, GET / PAUSE / RESUME / SEEK / QUIT cambian la sala, y el
+ * servidor les manda START / PAUSED / RESUMED / SEEKED / STOPPED a TODOS los
+ * integrantes (no solo al que mando el comando).
  *
  * El audio va en paquetes DATA para que el cliente pueda recibir otros
  * mensajes (respuestas a comandos) en medio de la cancion.
