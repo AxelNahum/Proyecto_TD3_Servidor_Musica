@@ -21,7 +21,14 @@ player_t *player_open(void);
  * Devuelve 0 si salio bien, -1 si hubo error. */
 int player_feed(player_t *p, const void *data, size_t len);
 
+/* Bitrate de la cancion en kbps (0 si todavia no se decodifico nada). */
+int player_bitrate(player_t *p);
+
 /* Espera a que termine de sonar lo que queda y libera todo. */
 void player_close(player_t *p);
+
+/* Corta al instante (tira lo que estaba por sonar) y libera todo.
+ * Se usa al cambiar de cancion, hacer SEEK o QUIT. */
+void player_abort(player_t *p);
 
 #endif

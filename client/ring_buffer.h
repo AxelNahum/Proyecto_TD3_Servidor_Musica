@@ -10,7 +10,9 @@
 
 /* Tipos de bloque que pasan por el buffer */
 typedef enum {
-    BLOCK_START,    /* Empieza una cancion nueva */
+    BLOCK_START,    /* Marca: empieza una cancion nueva */
+    BLOCK_SEEK,     /* Marca: la cancion sigue desde otra posicion (data = long long byte) */
+    BLOCK_STOP,     /* Marca: se saco la cancion */
     BLOCK_DATA,     /* Un pedazo de la cancion (MP3) */
     BLOCK_END,      /* Termino la cancion */
     BLOCK_QUIT      /* Se cerro la conexion: el reproductor tiene que terminar */
@@ -37,6 +39,19 @@ int ring_resume(ring_t *r);
 
 /* REPRODUCTOR: si esta en pausa espera (sin gastar procesador); si no, sigue. */
 int ring_wait_playing(ring_t *r);
+
+/* Vaciado del buffer (PLAY, SEEK, QUIT):
+ * la consola llama a ring_request_flush() ANTES de mandar el comando. El
+ * reproductor compara los pedidos con las marcas que ya saco del buffer:
+ * mientras haya menos marcas que pedidos, el audio que saca es viejo. */
+void ring_request_flush(ring_t *r);
+int  ring_flush_requests(ring_t *r);
+
+/* Datos de la cancion que anota el reproductor y lee la consola (para SEEK) */
+void      ring_set_bitrate(ring_t *r, int kbps);    /* 0 = todavia no se sabe */
+int       ring_get_bitrate(ring_t *r);
+void      ring_set_position(ring_t *r, long long byte);
+long long ring_get_position(ring_t *r);
 
 /* Borra la memoria compartida y los semaforos del sistema. */
 void ring_destroy(ring_t *r);

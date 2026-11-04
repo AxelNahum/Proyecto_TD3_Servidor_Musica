@@ -131,16 +131,38 @@ int player_feed(player_t *p, const void *data, size_t len)
     }
 }
 
-void player_close(player_t *p)
+int player_bitrate(player_t *p)
 {
-    if (p == NULL)
-        return;
+    struct mpg123_frameinfo info;
 
-    if (p->started)
-        out123_drain(p->ao);    /* Deja terminar de sonar lo que queda */
+    if (p == NULL || !p->started || mpg123_info(p->mh, &info) != MPG123_OK)
+        return 0;
+    return info.bitrate;        /* En kbps (por ejemplo 128) */
+}
 
+/* Libera todo (lo usan player_close y player_abort) */
+static void player_free(player_t *p)
+{
     out123_close(p->ao);
     out123_del(p->ao);
     mpg123_delete(p->mh);
     free(p);
+}
+
+void player_close(player_t *p)
+{
+    if (p == NULL)
+        return;
+    if (p->started)
+        out123_drain(p->ao);    /* Deja terminar de sonar lo que queda */
+    player_free(p);
+}
+
+void player_abort(player_t *p)
+{
+    if (p == NULL)
+        return;
+    if (p->started)
+        out123_drop(p->ao);     /* Tira lo que estaba por sonar: corta al instante */
+    player_free(p);
 }

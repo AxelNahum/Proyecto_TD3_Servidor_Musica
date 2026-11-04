@@ -2,8 +2,8 @@
  * receiver.c
  * Proceso receptor (productor): es el UNICO que lee del socket.
  *
- *   socket --> DATA/START/END --> buffer circular --> (reproductor)
- *          \-> SONGS/PAUSED/RESUMED/ERR --> pantalla
+ *   socket --> DATA/START/SEEKED/STOPPED/END --> buffer circular --> (reproductor)
+ *          \-> SONGS/PAUSED/RESUMED/ERR      --> pantalla
  *
  * Como los mensajes pueden llegar en cualquier momento (por ejemplo la
  * respuesta a un PAUSE en medio de la cancion), se imprimen y se vuelve a
@@ -41,7 +41,7 @@ void receiver_run(int fd, ring_t *ring)
     char line[LINE_SIZE];
     char block[BLOCK_SIZE];
     char name[LINE_SIZE];
-    long long size;
+    long long size, offset;
     size_t len;
     int n;
 
@@ -57,6 +57,18 @@ void receiver_run(int fd, ring_t *ring)
         } else if (sscanf(line, "START %lld %[^\n]", &size, name) == 2) {
             SHOW("Reproduciendo %s (%lld bytes)", name, size);
             ring_put(ring, BLOCK_START, NULL, 0);
+
+        } else if (sscanf(line, "SEEKED %lld", &offset) == 1) {
+            int kbps = ring_get_bitrate(ring);
+            if (kbps > 0) {
+                long long sec = offset / (kbps * 1000 / 8);
+                SHOW("Saltando a %lld:%02lld", sec / 60, sec % 60);
+            }
+            ring_put(ring, BLOCK_SEEK, &offset, sizeof(offset));
+
+        } else if (strcmp(line, "STOPPED") == 0) {
+            SHOW("Cancion detenida");
+            ring_put(ring, BLOCK_STOP, NULL, 0);
 
         } else if (strcmp(line, "END") == 0) {
             ring_put(ring, BLOCK_END, NULL, 0);

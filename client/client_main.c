@@ -14,6 +14,8 @@
  *   PLAY <nombre>   -> reproduce la cancion (si sonaba otra, la reemplaza)
  *   PAUSE           -> pausa la cancion
  *   RESUME          -> la reanuda desde donde quedo
+ *   SEEK <seg>      -> va a ese segundo; SEEK +10 / SEEK -10 adelanta / atrasa
+ *   QUIT            -> saca la cancion (deja de sonar)
  *   SALIR           -> cierra el cliente
  *
  * Uso: ./bin/client <IP del servidor>
@@ -47,6 +49,38 @@ static void cleanup(void)
     while (wait(NULL) > 0)      /* Espera a que terminen */
         ;
     ring_destroy(ring);
+}
+
+/*
+ * SEEK: el usuario escribe segundos y el servidor necesita bytes.
+ *   "SEEK 30"  -> ir a 0:30
+ *   "SEEK +10" -> adelantar 10 segundos
+ *   "SEEK -10" -> atrasar 10 segundos
+ * Para convertir se usa el bitrate que anota el reproductor:
+ *   bytes por segundo = kbps * 1000 / 8   (128 kbps -> 16000 bytes/s)
+ */
+static int seek(int sockfd, const char *arg)
+{
+    int kbps = ring_get_bitrate(ring);
+    long long bytes_per_sec, target;
+    int seconds = atoi(arg);
+
+    if (kbps <= 0) {
+        printf("No se puede hacer SEEK: no hay ninguna cancion sonando\n> ");
+        return -1;
+    }
+    bytes_per_sec = (long long)kbps * 1000 / 8;
+
+    if (arg[0] == '+' || arg[0] == '-')
+        target = ring_get_position(ring) + seconds * bytes_per_sec;    /* Relativo */
+    else
+        target = seconds * bytes_per_sec;                               /* Absoluto */
+    if (target < 0)
+        target = 0;
+
+    ring_request_flush(ring);       /* El audio de la posicion vieja se tira */
+    send_line(sockfd, "SEEK %lld", target);
+    return 0;
 }
 
 /* Ctrl+C, o SIGTERM del receptor cuando se corta la conexion.
@@ -128,7 +162,7 @@ int main(int argc, char *argv[])
     }
 
     /* ---- Padre: consola ---- */
-    printf("Comandos: LIST | PLAY <nombre> | PAUSE | RESUME | SALIR\n");
+    printf("Comandos: LIST | PLAY <nombre> | PAUSE | RESUME | SEEK <seg> | QUIT | SALIR\n");
     send_line(sockfd, "LIST");      /* Al conectarse, pide la lista */
 
     while (1) {
@@ -148,8 +182,23 @@ int main(int argc, char *argv[])
             send_line(sockfd, "LIST");
 
         } else if (strncmp(line, "PLAY ", 5) == 0) {
+            ring_request_flush(ring);       /* Lo que quede de la anterior se tira */
             send_line(sockfd, "GET %s", line + 5);
             if (paused) {                   /* Una cancion nueva arranca sonando */
+                ring_resume(ring);
+                paused = 0;
+            }
+
+        } else if (strncmp(line, "SEEK ", 5) == 0) {
+            if (seek(sockfd, line + 5) == 0 && paused) {   /* Despues de saltar sigue sonando */
+                ring_resume(ring);
+                paused = 0;
+            }
+
+        } else if (strcmp(line, "QUIT") == 0) {
+            ring_request_flush(ring);
+            send_line(sockfd, "QUIT");
+            if (paused) {                   /* Para que el reproductor vacie el buffer */
                 ring_resume(ring);
                 paused = 0;
             }
@@ -173,7 +222,7 @@ int main(int argc, char *argv[])
             }
 
         } else {
-            printf("Comando desconocido. Usa: LIST | PLAY <nombre> | PAUSE | RESUME | SALIR\n> ");
+            printf("Comando desconocido. Usa: LIST | PLAY <nombre> | PAUSE | RESUME | SEEK <seg> | QUIT | SALIR\n> ");
         }
         fflush(stdout);
     }

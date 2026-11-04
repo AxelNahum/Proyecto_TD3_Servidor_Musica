@@ -1,6 +1,7 @@
 /*
  * server_commands.c
  * Atencion de un cliente en el proceso hijo.
+ * Comandos: LIST, GET, PAUSE, RESUME, SEEK, QUIT (ver protocol.h).
  *
  * El hijo tiene que hacer dos cosas a la vez: mandar la cancion de a
  * bloques y escuchar los comandos del cliente (PAUSE, RESUME, ...). Para eso
@@ -35,6 +36,33 @@ static const char *client_str;      /* "IP:puerto" del cliente, para los mensaje
 static FILE *song     = NULL;       /* Archivo que se esta mandando (NULL = ya se mando todo) */
 static int   has_song = 0;          /* 1 si el cliente tiene una cancion puesta */
 static int   paused   = 0;          /* 1 si el cliente pidio pausa */
+static char  song_path[LINE_SIZE];  /* Ruta de la cancion puesta (para volver a abrirla en SEEK) */
+static long long song_size = 0;     /* Tamanio de la cancion puesta, en bytes */
+
+/*
+ * Los comandos que cortan la cancion (GET, SEEK, QUIT) responden SIEMPRE con
+ * exactamente una "marca": START, SEEKED o STOPPED (tambien si hubo error).
+ * El cliente las cuenta para saber que audio ya no corresponde y tirarlo.
+ */
+
+/* Saca la cancion puesta */
+static void stop_song(void)
+{
+    if (song != NULL)
+        fclose(song);
+    song     = NULL;
+    has_song = 0;
+    paused   = 0;
+}
+
+/* Responde un error a GET/SEEK y saca la cancion: manda "ERR ..." y la marca "STOPPED" */
+static int error_and_stop(int fd, const char *msg)
+{
+    stop_song();
+    if (send_line(fd, "ERR %s", msg) == -1)
+        return -1;
+    return send_line(fd, "STOPPED");
+}
 
 static int compare_names(const void *a, const void *b)
 {
@@ -88,20 +116,20 @@ static int cmd_get(int fd, const char *name)
 
     /* No se permite salir de la carpeta (por ejemplo "GET ../../etc/passwd") */
     if (name[0] == '\0' || name[0] == '.' || strchr(name, '/') != NULL)
-        return send_line(fd, "ERR nombre invalido");
+        return error_and_stop(fd, "nombre invalido");
 
     snprintf(path, sizeof(path), "%s/%s", songs_dir, name);
     if (stat(path, &st) == -1 || !S_ISREG(st.st_mode) || (f = fopen(path, "rb")) == NULL) {
         printf("[%s] GET %s -> no existe\n", client_str, name);
-        return send_line(fd, "ERR no existe la cancion %s", name);
+        return error_and_stop(fd, "no existe esa cancion");
     }
 
     /* Si ya habia una cancion, se reemplaza por la nueva */
-    if (song != NULL)
-        fclose(song);
-    song     = f;
-    has_song = 1;
-    paused   = 0;
+    stop_song();
+    song      = f;
+    has_song  = 1;
+    song_size = st.st_size;
+    snprintf(song_path, sizeof(song_path), "%s", path);
 
     printf("[%s] GET %s -> %lld bytes\n", client_str, name, (long long)st.st_size);
     return send_line(fd, "START %lld %s", (long long)st.st_size, name);
@@ -125,6 +153,38 @@ static int cmd_resume(int fd)
     return send_line(fd, "RESUMED");
 }
 
+/* SEEK <byte>: sigue mandando la cancion desde esa posicion (en bytes) */
+static int cmd_seek(int fd, const char *arg)
+{
+    long long offset = atoll(arg);
+
+    if (!has_song)
+        return error_and_stop(fd, "no hay ninguna cancion sonando");
+
+    /* Si ya se habia mandado toda, el archivo esta cerrado: se vuelve a abrir */
+    if (song == NULL && (song = fopen(song_path, "rb")) == NULL)
+        return error_and_stop(fd, "no se pudo volver a abrir la cancion");
+
+    if (offset < 0)
+        offset = 0;
+    if (offset > song_size)
+        offset = song_size;         /* Al final: va a mandar END enseguida */
+
+    fseek(song, offset, SEEK_SET);
+    paused = 0;
+
+    printf("[%s] SEEK -> byte %lld de %lld\n", client_str, offset, song_size);
+    return send_line(fd, "SEEKED %lld", offset);
+}
+
+/* QUIT: saca la cancion (deja de sonar) */
+static int cmd_quit(int fd)
+{
+    stop_song();
+    printf("[%s] QUIT\n", client_str);
+    return send_line(fd, "STOPPED");
+}
+
 /* Ejecuta un comando recibido. Devuelve -1 si hay que cortar la conexion. */
 static int run_command(int fd, const char *line)
 {
@@ -136,6 +196,10 @@ static int run_command(int fd, const char *line)
         return cmd_pause(fd);
     if (strcmp(line, "RESUME") == 0)
         return cmd_resume(fd);
+    if (strncmp(line, "SEEK ", 5) == 0)
+        return cmd_seek(fd, line + 5);
+    if (strcmp(line, "QUIT") == 0)
+        return cmd_quit(fd);
     if (line[0] == '\0')
         return 0;
     return send_line(fd, "ERR comando desconocido: %s", line);

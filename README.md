@@ -27,7 +27,7 @@ El servidor tiene una carpeta con canciones MP3 y atiende a varios clientes a la
 - [x] Protocolo de aplicación: `LIST` y `GET`
 - [x] Reproducción mientras se recibe la canción (*streaming*)
 - [x] Controles: `PAUSE` y `RESUME`
-- [ ] Controles: `SEEK` y `QUIT`
+- [x] Controles: `SEEK` y `QUIT`, y cambio de canción al instante
 - [x] Buffer circular en el cliente (productor-consumidor con `fork()`, memoria compartida y semáforos)
 - [ ] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
 - [ ] Salas de reproducción sincronizada (`JOIN` y `LEAVE`)
@@ -50,8 +50,10 @@ Comandos del cliente:
 | Comando | Qué hace |
 |---|---|
 | `LIST` | Muestra las canciones disponibles |
-| `PLAY <canción>` | Reproduce la canción mientras la recibe |
+| `PLAY <canción>` | Reproduce la canción mientras la recibe (si sonaba otra, la cambia) |
 | `PAUSE` / `RESUME` | Pausa / reanuda |
+| `SEEK <seg>` | Va a ese segundo; `SEEK +10` / `SEEK -10` adelanta / atrasa |
+| `QUIT` | Saca la canción |
 | `SALIR` | Cierra el cliente |
 
 ## Licencia
