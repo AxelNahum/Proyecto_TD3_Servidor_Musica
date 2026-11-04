@@ -34,4 +34,7 @@ void table_pause(int row);
 void table_resume(int row);
 void table_stop(int row);
 
+/* Segundo de la cancion por el que va la reproduccion de ese cliente */
+double table_get_position(int row);
+
 #endif

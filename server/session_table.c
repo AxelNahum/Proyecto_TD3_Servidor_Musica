@@ -192,6 +192,15 @@ void table_resume(int row)
     unlock();
 }
 
+double table_get_position(int row)
+{
+    double pos;
+    lock();
+    pos = table->rows[row].state == STATE_NO_SONG ? 0 : current_position(&table->rows[row]);
+    unlock();
+    return pos;
+}
+
 void table_stop(int row)
 {
     lock();

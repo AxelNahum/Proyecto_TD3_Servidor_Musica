@@ -13,16 +13,21 @@
  *                                END                 termino la cancion
  *   PAUSE                        PAUSED              el servidor deja de mandar DATA
  *   RESUME                       RESUMED             el servidor sigue mandando DATA
- *   SEEK <byte>                  SEEKED <byte>       sigue mandando DATA desde ese byte
+ *   SEEK <seg>                   SEEKED <seg>        sigue mandando DATA desde ese segundo
+ *   SEEK +<seg> / SEEK -<seg>    SEEKED <seg>        adelanta / atrasa
  *   QUIT                         STOPPED             saca la cancion
- *   (cualquier error)            ERR <mensaje>
+ *   (cualquier error)            ERR <mensaje>       (no cambia nada de lo que suena)
  *
  * El audio va en paquetes DATA para que el cliente pueda recibir otros
  * mensajes (respuestas a comandos) en medio de la cancion.
  *
- * GET, SEEK y QUIT responden SIEMPRE con exactamente una "marca" (START,
- * SEEKED o STOPPED). Si hay un error mandan "ERR ..." seguido de STOPPED.
- * El cliente cuenta las marcas para saber que audio ya no corresponde.
+ * START, SEEKED y STOPPED son "marcas": el audio que llego antes ya no
+ * corresponde y el cliente lo tira. PAUSED y RESUMED pausan y reanudan.
+ * El cliente obedece estos mensajes vengan de un comando propio o (en una
+ * sala) de otro integrante.
+ *
+ * El servidor manda la cancion como mucho unos segundos por delante de lo
+ * que suena, para que esos cambios se noten rapido.
  */
 #ifndef PROTOCOL_H
 #define PROTOCOL_H

@@ -44,9 +44,7 @@ typedef struct {
     slot_t    slots[RING_SLOTS];
     int       in;               /* Proximo lugar donde escribe el productor */
     int       out;              /* Proximo lugar de donde lee el consumidor */
-    int       flush_requests;   /* Cuantas veces la consola pidio vaciar (PLAY/SEEK/QUIT) */
-    int       bitrate_kbps;     /* Bitrate de la cancion que suena (0 = no se sabe) */
-    long long position;         /* Byte de la cancion que se esta reproduciendo */
+    int       flush_requests;   /* Cuantas veces el receptor pidio vaciar (marcas recibidas) */
 } ring_shared_t;
 
 /* Lo que tiene cada proceso: los ids y el puntero a la memoria compartida.
@@ -81,8 +79,6 @@ ring_t *ring_create(void)
     r->shared->in             = 0;
     r->shared->out            = 0;
     r->shared->flush_requests = 0;
-    r->shared->bitrate_kbps   = 0;
-    r->shared->position       = 0;
 
     if (semaphore_set(r->sem_id, SEM_FREE,  RING_SLOTS) == -1 ||
         semaphore_set(r->sem_id, SEM_FULL,  0)          == -1 ||
@@ -159,8 +155,8 @@ int ring_wait_playing(ring_t *r)
 }
 
 /*
- * Los datos compartidos que no son el buffer (pedidos, bitrate, posicion) los
- * escribe un proceso y los lee otro: se protegen con el mismo MUTEX.
+ * El contador de pedidos lo escribe el receptor y lo lee el reproductor:
+ * se protege con el mismo MUTEX del buffer.
  */
 
 void ring_request_flush(ring_t *r)
@@ -177,38 +173,6 @@ int ring_flush_requests(ring_t *r)
     n = r->shared->flush_requests;
     semaphore_up(r->sem_id, SEM_MUTEX);
     return n;
-}
-
-void ring_set_bitrate(ring_t *r, int kbps)
-{
-    semaphore_down(r->sem_id, SEM_MUTEX);
-    r->shared->bitrate_kbps = kbps;
-    semaphore_up(r->sem_id, SEM_MUTEX);
-}
-
-int ring_get_bitrate(ring_t *r)
-{
-    int kbps;
-    semaphore_down(r->sem_id, SEM_MUTEX);
-    kbps = r->shared->bitrate_kbps;
-    semaphore_up(r->sem_id, SEM_MUTEX);
-    return kbps;
-}
-
-void ring_set_position(ring_t *r, long long byte)
-{
-    semaphore_down(r->sem_id, SEM_MUTEX);
-    r->shared->position = byte;
-    semaphore_up(r->sem_id, SEM_MUTEX);
-}
-
-long long ring_get_position(ring_t *r)
-{
-    long long byte;
-    semaphore_down(r->sem_id, SEM_MUTEX);
-    byte = r->shared->position;
-    semaphore_up(r->sem_id, SEM_MUTEX);
-    return byte;
 }
 
 void ring_destroy(ring_t *r)

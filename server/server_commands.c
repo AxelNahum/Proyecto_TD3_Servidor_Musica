@@ -10,7 +10,11 @@
  *   - el socket tiene datos para leer   -> llego un comando
  *   - el socket puede aceptar mas datos -> se manda el proximo bloque
  *
- * (lo segundo solo se pide si hay una cancion sonando y no esta en pausa)
+ * Ritmo de envio: la cancion se manda como mucho AHEAD_SEC segundos por
+ * delante de la posicion de reproduccion (que calcula la tabla de sesiones
+ * por tiempo). Si ya se mando suficiente, select() espera con un timeout
+ * corto y se vuelve a revisar. Asi, si cambia algo (PAUSE, SEEK, otra
+ * cancion), el cliente no tiene muchos segundos de audio viejo en camino.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,37 +28,38 @@
 #include "session_table.h"
 #include "mp3_info.h"
 
-#define MAX_SONGS  256      /* Canciones que se listan como maximo */
-#define NAME_SIZE  256
+#define MAX_SONGS   256     /* Canciones que se listan como maximo */
+#define NAME_SIZE   256
+#define AHEAD_SEC   5.0     /* Segundos que se manda por delante de lo que suena */
+#define CHECK_USEC  100000  /* Cada cuanto se revisa si se puede mandar mas (100 ms) */
 
 static const char *songs_dir;
 static const char *client_str;      /* "IP:puerto" del cliente, para los mensajes */
 static int         table_row;       /* Fila de este cliente en la tabla de sesiones */
 
 /* Estado de la reproduccion de este cliente.
- * 'song' y 'has_song' no son lo mismo: el servidor manda la cancion mas rapido
- * de lo que suena (el cliente la va guardando en su buffer), asi que puede
- * terminar de mandarla (song = NULL) mientras el cliente todavia la escucha
- * (has_song = 1). */
+ * 'song' y 'has_song' no son lo mismo: el servidor manda la cancion un poco
+ * antes de que suene, asi que puede terminar de mandarla (song = NULL)
+ * mientras el cliente todavia la escucha (has_song = 1). */
 static FILE *song     = NULL;       /* Archivo que se esta mandando (NULL = ya se mando todo) */
 static int   has_song = 0;          /* 1 si el cliente tiene una cancion puesta */
 static int   paused   = 0;          /* 1 si el cliente pidio pausa */
 static char  song_path[LINE_SIZE];  /* Ruta de la cancion puesta (para volver a abrirla en SEEK) */
+static char  song_name[NAME_SIZE];  /* Nombre de la cancion puesta (para la tabla) */
 static long long song_size = 0;     /* Tamanio de la cancion puesta, en bytes */
 static int   song_kbps = 0;         /* Bitrate de la cancion (0 = no se pudo leer) */
-static char  song_name[NAME_SIZE];  /* Nombre de la cancion puesta (para la tabla) */
 
-/* Pasa de bytes a segundos con el bitrate (128 kbps = 16000 bytes por segundo) */
-static double bytes_to_seconds(long long bytes)
+/* Bytes por segundo de la cancion (128 kbps = 16000 bytes por segundo) */
+static double bytes_per_second(void)
 {
-    return song_kbps > 0 ? bytes / (song_kbps * 1000.0 / 8) : 0;
+    return song_kbps * 1000.0 / 8;
 }
 
-/*
- * Los comandos que cortan la cancion (GET, SEEK, QUIT) responden SIEMPRE con
- * exactamente una "marca": START, SEEKED o STOPPED (tambien si hubo error).
- * El cliente las cuenta para saber que audio ya no corresponde y tirarlo.
- */
+/* Duracion de la cancion en segundos (0 si no se sabe el bitrate) */
+static double song_duration(void)
+{
+    return song_kbps > 0 ? song_size / bytes_per_second() : 0;
+}
 
 /* Saca la cancion puesta */
 static void stop_song(void)
@@ -65,15 +70,6 @@ static void stop_song(void)
     has_song = 0;
     paused   = 0;
     table_stop(table_row);
-}
-
-/* Responde un error a GET/SEEK y saca la cancion: manda "ERR ..." y la marca "STOPPED" */
-static int error_and_stop(int fd, const char *msg)
-{
-    stop_song();
-    if (send_line(fd, "ERR %s", msg) == -1)
-        return -1;
-    return send_line(fd, "STOPPED");
 }
 
 static int compare_names(const void *a, const void *b)
@@ -119,7 +115,8 @@ static int cmd_list(int fd)
 }
 
 /* GET: abre la cancion y avisa "START <tamanio> <nombre>".
- * Los bloques los va mandando el loop de handle_client(). */
+ * Los bloques los va mandando el loop de handle_client().
+ * Si hay un error, la cancion que sonaba sigue sonando. */
 static int cmd_get(int fd, const char *name)
 {
     char path[LINE_SIZE];
@@ -128,12 +125,12 @@ static int cmd_get(int fd, const char *name)
 
     /* No se permite salir de la carpeta (por ejemplo "GET ../../etc/passwd") */
     if (name[0] == '\0' || name[0] == '.' || strchr(name, '/') != NULL)
-        return error_and_stop(fd, "nombre invalido");
+        return send_line(fd, "ERR nombre invalido");
 
     snprintf(path, sizeof(path), "%s/%s", songs_dir, name);
     if (stat(path, &st) == -1 || !S_ISREG(st.st_mode) || (f = fopen(path, "rb")) == NULL) {
         printf("[%s] GET %s -> no existe\n", client_str, name);
-        return error_and_stop(fd, "no existe esa cancion");
+        return send_line(fd, "ERR no existe la cancion %s", name);
     }
 
     /* Si ya habia una cancion, se reemplaza por la nueva */
@@ -146,10 +143,10 @@ static int cmd_get(int fd, const char *name)
     snprintf(song_name, sizeof(song_name), "%s", name);
 
     /* En la tabla: reproduciendo desde el segundo 0 */
-    table_play(table_row, song_name, bytes_to_seconds(song_size), 0);
+    table_play(table_row, song_name, song_duration(), 0);
 
     printf("[%s] GET %s -> %lld bytes, %d kbps\n", client_str, name, song_size, song_kbps);
-    return send_line(fd, "START %lld %s", (long long)st.st_size, name);
+    return send_line(fd, "START %lld %s", song_size, name);
 }
 
 static int cmd_pause(int fd)
@@ -172,31 +169,38 @@ static int cmd_resume(int fd)
     return send_line(fd, "RESUMED");
 }
 
-/* SEEK <byte>: sigue mandando la cancion desde esa posicion (en bytes) */
+/* SEEK <seg>: va a ese segundo. SEEK +<seg> / SEEK -<seg>: adelanta / atrasa.
+ * Responde "SEEKED <seg>" y sigue mandando la cancion desde ahi. */
 static int cmd_seek(int fd, const char *arg)
 {
-    long long offset = atoll(arg);
+    double seconds = atof(arg);     /* atof("+10") = 10, atof("-10") = -10 */
+    double target;
 
     if (!has_song)
-        return error_and_stop(fd, "no hay ninguna cancion sonando");
+        return send_line(fd, "ERR no hay ninguna cancion sonando");
+    if (song_kbps <= 0)
+        return send_line(fd, "ERR no se puede hacer SEEK en esta cancion (bitrate desconocido)");
+
+    if (arg[0] == '+' || arg[0] == '-')
+        target = table_get_position(table_row) + seconds;   /* Relativo */
+    else
+        target = seconds;                                   /* Absoluto */
+
+    if (target < 0)
+        target = 0;
+    if (target > song_duration())
+        target = song_duration();       /* Al final: va a mandar END enseguida */
 
     /* Si ya se habia mandado toda, el archivo esta cerrado: se vuelve a abrir */
     if (song == NULL && (song = fopen(song_path, "rb")) == NULL)
-        return error_and_stop(fd, "no se pudo volver a abrir la cancion");
+        return send_line(fd, "ERR no se pudo volver a abrir la cancion");
 
-    if (offset < 0)
-        offset = 0;
-    if (offset > song_size)
-        offset = song_size;         /* Al final: va a mandar END enseguida */
-
-    fseek(song, offset, SEEK_SET);
+    fseek(song, (long)(target * bytes_per_second()), SEEK_SET);
     paused = 0;
+    table_play(table_row, song_name, song_duration(), target);
 
-    /* En la tabla: reproduciendo desde el segundo que corresponde a ese byte */
-    table_play(table_row, song_name, bytes_to_seconds(song_size), bytes_to_seconds(offset));
-
-    printf("[%s] SEEK -> byte %lld de %lld\n", client_str, offset, song_size);
-    return send_line(fd, "SEEKED %lld", offset);
+    printf("[%s] SEEK -> %d:%02d\n", client_str, (int)target / 60, (int)target % 60);
+    return send_line(fd, "SEEKED %d", (int)target);
 }
 
 /* QUIT: saca la cancion (deja de sonar) */
@@ -227,6 +231,19 @@ static int run_command(int fd, const char *line)
     return send_line(fd, "ERR comando desconocido: %s", line);
 }
 
+/* 1 si hay que mandar otro bloque ahora: hay cancion, no esta en pausa y
+ * no se mando mas de AHEAD_SEC segundos por delante de lo que suena */
+static int can_send_more(void)
+{
+    if (song == NULL || paused)
+        return 0;
+    if (song_kbps <= 0)
+        return 1;                       /* Sin bitrate no se puede medir: se manda */
+
+    double sent_sec = ftell(song) / bytes_per_second();
+    return sent_sec < table_get_position(table_row) + AHEAD_SEC;
+}
+
 /* Manda el proximo bloque de la cancion como "DATA <n>" + n bytes.
  * Si se termino el archivo, manda "END". */
 static int send_next_block(int fd)
@@ -241,7 +258,7 @@ static int send_next_block(int fd)
     }
 
     /* Se termino de mandar, pero el cliente la sigue escuchando: has_song
-     * queda en 1 para que PAUSE / RESUME sigan funcionando */
+     * queda en 1 para que PAUSE / RESUME / SEEK sigan funcionando */
     fclose(song);
     song = NULL;
     printf("[%s] Cancion enviada completa\n", client_str);
@@ -252,19 +269,32 @@ void handle_client(int fd, const char *dir, const char *client, int row)
 {
     char line[LINE_SIZE];
     fd_set readfds, writefds;
+    struct timeval timeout, *wait;
+    int want_write;
 
     songs_dir  = dir;
     client_str = client;
     table_row  = row;
 
     while (1) {
+        want_write = can_send_more();
+
         FD_ZERO(&readfds);
         FD_ZERO(&writefds);
         FD_SET(fd, &readfds);                   /* Siempre: ver si llega un comando */
-        if (song != NULL && !paused)
+        if (want_write)
             FD_SET(fd, &writefds);              /* Solo si hay que mandar audio */
 
-        if (select(fd + 1, &readfds, &writefds, NULL, NULL) == -1) {
+        /* Si hay cancion pero ya se mando suficiente, se espera un rato y se
+         * vuelve a revisar; si no, se espera sin limite a que llegue un comando */
+        wait = NULL;
+        if (song != NULL && !paused && !want_write) {
+            timeout.tv_sec  = 0;
+            timeout.tv_usec = CHECK_USEC;
+            wait = &timeout;
+        }
+
+        if (select(fd + 1, &readfds, &writefds, NULL, wait) == -1) {
             if (errno == EINTR)
                 continue;
             perror("select");
@@ -278,7 +308,7 @@ void handle_client(int fd, const char *dir, const char *client, int row)
                 break;
         }
 
-        if (FD_ISSET(fd, &writefds) && song != NULL && !paused) {
+        if (FD_ISSET(fd, &writefds) && can_send_more()) {
             if (send_next_block(fd) == -1)
                 break;
         }

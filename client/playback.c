@@ -9,16 +9,13 @@
  *                       END:   termina de sonar y cierra el reproductor
  *                       QUIT:  sale
  *
- * Como se tira el audio viejo (al hacer PLAY de otra, SEEK o QUIT):
- *   - La consola suma 1 a "pedidos" (ring_request_flush) y manda el comando.
- *   - El servidor responde con una marca (START, SEEKED o STOPPED).
+ * Como se tira el audio viejo (cancion nueva, SEEK o QUIT):
+ *   - Cuando llega una marca (START, SEEKED o STOPPED), el receptor suma 1 a
+ *     "pedidos" (ring_request_flush) y despues pone la marca en el buffer.
  *   - Este proceso cuenta las marcas que va sacando del buffer. Mientras haya
  *     menos marcas que pedidos, todo lo que saca es audio viejo: lo tira.
- *   Asi se descarta lo que habia en el buffer y tambien lo que venia en
- *   camino por la red.
  */
 #include <stdio.h>
-#include <string.h>
 #include "protocol.h"
 #include "player.h"
 #include "playback.h"
@@ -29,8 +26,6 @@ void playback_run(ring_t *ring)
     block_type_t type;
     player_t *player = NULL;
     int marks = 0;              /* Marcas (START/SEEK/STOP) que ya saque del buffer */
-    long long position = 0;     /* Byte de la cancion que se esta reproduciendo */
-    long long offset;
     int len;
 
     while ((len = ring_get(ring, &type, block, sizeof(block))) >= 0) {
@@ -45,25 +40,15 @@ void playback_run(ring_t *ring)
             if (marks < ring_flush_requests(ring))
                 continue;
 
-            if (type == BLOCK_START) {
-                position = 0;
-                ring_set_bitrate(ring, 0);      /* Se sabe cuando se decodifique */
-                player = player_open();
-            } else if (type == BLOCK_SEEK) {
-                memcpy(&offset, block, sizeof(offset));
-                position = offset;
-                player = player_open();
-            } else {
-                ring_set_bitrate(ring, 0);      /* STOP: no hay cancion */
-            }
-            ring_set_position(ring, position);
+            if (type != BLOCK_STOP)
+                player = player_open();         /* START o SEEK: vuelve a sonar */
 
         } else if (type == BLOCK_DATA) {
-            /* Si la consola pidio pausa, el proceso se queda esperando aca */
+            /* Si esta en pausa, el proceso se queda esperando aca */
             if (ring_wait_playing(ring) == -1)
                 break;
 
-            /* Audio viejo (llego antes de la marca del ultimo pedido): se tira */
+            /* Audio viejo (llego antes de la ultima marca): se tira */
             if (marks < ring_flush_requests(ring)) {
                 player_abort(player);           /* Corta lo que estaba sonando */
                 player = NULL;
@@ -78,12 +63,6 @@ void playback_run(ring_t *ring)
                 player_close(player);
                 player = NULL;
             }
-
-            /* Anota por donde va y el bitrate, para que la consola pueda hacer SEEK */
-            position += len;
-            ring_set_position(ring, position);
-            if (player && ring_get_bitrate(ring) == 0)
-                ring_set_bitrate(ring, player_bitrate(player));
 
         } else if (type == BLOCK_END) {
             if (marks < ring_flush_requests(ring))

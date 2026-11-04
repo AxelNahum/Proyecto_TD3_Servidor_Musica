@@ -131,15 +131,6 @@ int player_feed(player_t *p, const void *data, size_t len)
     }
 }
 
-int player_bitrate(player_t *p)
-{
-    struct mpg123_frameinfo info;
-
-    if (p == NULL || !p->started || mpg123_info(p->mh, &info) != MPG123_OK)
-        return 0;
-    return info.bitrate;        /* En kbps (por ejemplo 128) */
-}
-
 /* Libera todo (lo usan player_close y player_abort) */
 static void player_free(player_t *p)
 {
