@@ -29,7 +29,7 @@ El servidor tiene una carpeta con canciones MP3 y atiende a varios clientes a la
 - [x] Controles: `PAUSE` y `RESUME`
 - [x] Controles: `SEEK` y `QUIT`, y cambio de canción al instante
 - [x] Buffer circular en el cliente (productor-consumidor con `fork()`, memoria compartida y semáforos)
-- [ ] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
+- [x] Tabla de sesiones en memoria compartida, con estadísticas y límite de conexiones
 - [ ] Salas de reproducción sincronizada (`JOIN` y `LEAVE`)
 - [ ] Interfaz gráfica del cliente
 
@@ -39,7 +39,8 @@ El cliente necesita la librería de audio: `sudo apt install libmpg123-dev`.
 
 ```bash
 make server                     # en la PC servidor
-./bin/server                    # lee las canciones de songs/
+./bin/server [carpeta] [max]    # por defecto songs/ y 5 clientes
+kill -USR1 <pid>                # muestra la tabla de clientes (el PID se ve al arrancar)
 
 make client                     # en la PC cliente
 ./bin/client <IP del servidor>

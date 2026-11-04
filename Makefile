@@ -4,7 +4,8 @@ CFLAGS = -Wall -g -Icommon
 BIN = bin
 
 COMMON = common/protocol.c
-SERVER = server/server_main.c server/server_commands.c $(COMMON)
+SERVER = server/server_main.c server/server_commands.c server/session_table.c \
+         server/mp3_info.c common/ipc.c $(COMMON)
 CLIENT = client/client_main.c client/receiver.c client/playback.c client/player.c \
          client/ring_buffer.c common/ipc.c $(COMMON)
 

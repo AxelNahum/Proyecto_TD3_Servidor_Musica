@@ -21,12 +21,15 @@
 #include <sys/stat.h>
 #include "protocol.h"
 #include "server_commands.h"
+#include "session_table.h"
+#include "mp3_info.h"
 
 #define MAX_SONGS  256      /* Canciones que se listan como maximo */
 #define NAME_SIZE  256
 
 static const char *songs_dir;
 static const char *client_str;      /* "IP:puerto" del cliente, para los mensajes */
+static int         table_row;       /* Fila de este cliente en la tabla de sesiones */
 
 /* Estado de la reproduccion de este cliente.
  * 'song' y 'has_song' no son lo mismo: el servidor manda la cancion mas rapido
@@ -38,6 +41,14 @@ static int   has_song = 0;          /* 1 si el cliente tiene una cancion puesta 
 static int   paused   = 0;          /* 1 si el cliente pidio pausa */
 static char  song_path[LINE_SIZE];  /* Ruta de la cancion puesta (para volver a abrirla en SEEK) */
 static long long song_size = 0;     /* Tamanio de la cancion puesta, en bytes */
+static int   song_kbps = 0;         /* Bitrate de la cancion (0 = no se pudo leer) */
+static char  song_name[NAME_SIZE];  /* Nombre de la cancion puesta (para la tabla) */
+
+/* Pasa de bytes a segundos con el bitrate (128 kbps = 16000 bytes por segundo) */
+static double bytes_to_seconds(long long bytes)
+{
+    return song_kbps > 0 ? bytes / (song_kbps * 1000.0 / 8) : 0;
+}
 
 /*
  * Los comandos que cortan la cancion (GET, SEEK, QUIT) responden SIEMPRE con
@@ -53,6 +64,7 @@ static void stop_song(void)
     song     = NULL;
     has_song = 0;
     paused   = 0;
+    table_stop(table_row);
 }
 
 /* Responde un error a GET/SEEK y saca la cancion: manda "ERR ..." y la marca "STOPPED" */
@@ -129,9 +141,14 @@ static int cmd_get(int fd, const char *name)
     song      = f;
     has_song  = 1;
     song_size = st.st_size;
+    song_kbps = mp3_bitrate_kbps(path);
     snprintf(song_path, sizeof(song_path), "%s", path);
+    snprintf(song_name, sizeof(song_name), "%s", name);
 
-    printf("[%s] GET %s -> %lld bytes\n", client_str, name, (long long)st.st_size);
+    /* En la tabla: reproduciendo desde el segundo 0 */
+    table_play(table_row, song_name, bytes_to_seconds(song_size), 0);
+
+    printf("[%s] GET %s -> %lld bytes, %d kbps\n", client_str, name, song_size, song_kbps);
     return send_line(fd, "START %lld %s", (long long)st.st_size, name);
 }
 
@@ -140,6 +157,7 @@ static int cmd_pause(int fd)
     if (!has_song)
         return send_line(fd, "ERR no hay ninguna cancion sonando");
     paused = 1;
+    table_pause(table_row);
     printf("[%s] PAUSE\n", client_str);
     return send_line(fd, "PAUSED");
 }
@@ -149,6 +167,7 @@ static int cmd_resume(int fd)
     if (!has_song)
         return send_line(fd, "ERR no hay ninguna cancion sonando");
     paused = 0;
+    table_resume(table_row);
     printf("[%s] RESUME\n", client_str);
     return send_line(fd, "RESUMED");
 }
@@ -172,6 +191,9 @@ static int cmd_seek(int fd, const char *arg)
 
     fseek(song, offset, SEEK_SET);
     paused = 0;
+
+    /* En la tabla: reproduciendo desde el segundo que corresponde a ese byte */
+    table_play(table_row, song_name, bytes_to_seconds(song_size), bytes_to_seconds(offset));
 
     printf("[%s] SEEK -> byte %lld de %lld\n", client_str, offset, song_size);
     return send_line(fd, "SEEKED %lld", offset);
@@ -226,13 +248,14 @@ static int send_next_block(int fd)
     return send_line(fd, "END");
 }
 
-void handle_client(int fd, const char *dir, const char *client)
+void handle_client(int fd, const char *dir, const char *client, int row)
 {
     char line[LINE_SIZE];
     fd_set readfds, writefds;
 
     songs_dir  = dir;
     client_str = client;
+    table_row  = row;
 
     while (1) {
         FD_ZERO(&readfds);
@@ -263,5 +286,6 @@ void handle_client(int fd, const char *dir, const char *client)
 
     if (song != NULL)
         fclose(song);
-    printf("[%s] Desconectado\n", client_str);
+    table_remove(table_row);        /* El cliente ya no esta: se borra su fila */
+    printf("[%s] Desconectado (quedan %d clientes)\n", client_str, table_count());
 }

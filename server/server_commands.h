@@ -7,7 +7,8 @@
 #define SERVER_COMMANDS_H
 
 /* Atiende los comandos del cliente conectado en 'fd' hasta que se desconecta.
- * 'songs_dir' es la carpeta de canciones y 'client' su "IP:puerto" (para los mensajes). */
-void handle_client(int fd, const char *songs_dir, const char *client);
+ * 'songs_dir' es la carpeta de canciones, 'client' su "IP:puerto" (para los
+ * mensajes) y 'row' su fila en la tabla de sesiones. */
+void handle_client(int fd, const char *songs_dir, const char *client, int row);
 
 #endif

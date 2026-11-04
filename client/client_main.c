@@ -136,6 +136,8 @@ int main(int argc, char *argv[])
     signal(SIGINT, on_exit_signal);
     signal(SIGTERM, on_exit_signal);
     signal(SIGCHLD, SIG_IGN);       /* Los hijos que terminan no quedan zombies */
+    signal(SIGPIPE, SIG_IGN);       /* Si el servidor cierra (por ejemplo, lleno), send() da
+                                     * error en vez de matar a la consola sin limpiar */
     fflush(stdout);                 /* Para que los hijos no hereden texto sin imprimir */
 
     /* ---- Hijo 1: receptor ---- */
